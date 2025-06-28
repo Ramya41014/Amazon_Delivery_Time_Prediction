@@ -1,0 +1,96 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+import mlflow.pyfunc
+from sklearn.preprocessing import LabelEncoder
+
+# Load the MLflow model
+model_name = "XGB_Amazon_Delivery"
+model_version = 1
+model_uri = f'models:/{model_name}/{model_version}'
+model = mlflow.pyfunc.load_model(model_uri)
+
+# Define categorical columns and their possible values
+CATEGORICAL_FEATURES = {
+    'Traffic': ['High','Jam','Low','Medium'],
+    'Category': ['Clothing','Electronics' ,'Sports' ,'Cosmetics', 'Toys', 'Snacks', 'Shoes',
+ 'Apparel' ,'Jewelry', 'Outdoors', 'Grocery' ,'Books' ,'Kitchen', 'Home',
+ 'Pet Supplies', 'Skincare'],
+    'Weather': ['Sunny', 'Stormy' ,'Sandstorms' ,'Cloudy' ,'Fog' ,'Windy'],
+    'Vehicle': ['motorcycle' ,'scooter', 'van' ,'bicycle'],
+    'Area': ['Urban' ,'Metropolitian' ,'Semi-Urban', 'Other'],
+    'Order_Weekday': ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+}
+
+# Initialize label encoders with the same classes used during training
+label_encoders = {}
+for col, categories in CATEGORICAL_FEATURES.items():
+    le = LabelEncoder()
+    le.fit(categories)  # Fit with the same categories used during training
+    label_encoders[col] = le
+
+def prepare_input(features):
+    """Convert categorical features using the label encoders"""
+    features = features.copy()
+    for col in CATEGORICAL_FEATURES.keys():
+        if col in features:
+            features[col] = label_encoders[col].transform([features[col]])[0]
+    return features
+
+def predict_delivery_time(input_data):
+    """Make prediction using the MLflow model"""
+    input_df = pd.DataFrame(input_data, index=[0])
+    prediction = model.predict(input_df)
+    return prediction[0]
+
+# Streamlit UI
+st.title(" Amazon Delivery Time Prediction")
+st.markdown("Predict delivery time based on order details")
+
+with st.form("prediction_form"):
+    st.header("Order Details")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        agent_age = st.number_input("Agent Age", min_value=18, max_value=70, value=30)
+        agent_rating = st.slider("Agent Rating", 1.0, 5.0, 4.0, 0.1)
+        distance_km = st.number_input("Distance (km)", min_value=0.0, value=1.0)
+        order_month = st.number_input("Order Month (1-12)", min_value=1, max_value=12, value=1)
+        order_day = st.number_input("Order Day (1-31)", min_value=1, max_value=31, value=1)
+        pickup_delay = st.number_input("Pickup Delay (minutes)", min_value=0.0, value=0.0)
+
+    with col2:
+        traffic = st.selectbox("Traffic Condition", CATEGORICAL_FEATURES['Traffic'])
+        weather = st.selectbox("Weather Condition", CATEGORICAL_FEATURES['Weather'])
+        vehicle = st.selectbox("Vehicle Type", CATEGORICAL_FEATURES['Vehicle'])
+        area = st.selectbox("Area Type", CATEGORICAL_FEATURES['Area'])
+        category = st.selectbox("Product Category", CATEGORICAL_FEATURES['Category'])
+        order_weekday = st.selectbox("Order Weekday", CATEGORICAL_FEATURES['Order_Weekday'])
+
+    submitted = st.form_submit_button("Predict Delivery Time")
+    
+    if submitted:
+        input_features = {
+            'Agent_Age': agent_age,
+            'Agent_Rating': agent_rating,
+            'Traffic': traffic,
+            'Weather': weather,
+            'Vehicle': vehicle,
+            'Area': area,
+            'Category': category,
+            'Order_Weekday': order_weekday,
+            'Distance_km': distance_km,
+            'Order_Month': order_month,
+            'Order_Day': order_day,
+            'Pickup_Delay': pickup_delay
+        }
+        
+        # Prepare input (apply label encoding)
+        prepared_input = prepare_input(input_features)
+        
+        # Make prediction
+        delivery_time = predict_delivery_time(prepared_input)
+        
+        st.success(f" Predicted Delivery Time: {delivery_time:.2f} hours")
+
+
